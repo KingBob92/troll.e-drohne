@@ -1,0 +1,23 @@
+{
+  "name": "TROLL.e – Drohnen-Andocken",
+  "short_name": "TROLL.e",
+  "start_url": "./?src=a2hs",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0b0e18",
+  "theme_color": "#0b0e18",
+  "icons": [
+    {
+      "src": "Assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "Assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

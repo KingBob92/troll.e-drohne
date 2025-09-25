@@ -1,4 +1,4 @@
-import { VIEW_W, VIEW_H } from './const.js';
+import { VIEW_W } from './const.js';
 
 export const $ = sel => document.querySelector(sel);
 
@@ -18,19 +18,34 @@ export const ui = {
   rotate: $('#rotate'),
 };
 
+function viewportSize(){
+  // visualViewport ist auf iOS/Android präziser (inkl. UI-Balken)
+  const vv = window.visualViewport;
+  const vw = Math.floor((vv?.width ?? window.innerWidth));
+  const vh = Math.floor((vv?.height ?? window.innerHeight));
+  return {vw, vh};
+}
+
 export function fit(){
-  const vw = innerWidth, vh = innerHeight, rat = VIEW_W/VIEW_H;
-  let w = vw, h = w/rat;
-  if (h > vh){ h = vh; w = h*rat; }
-  ui.stage.style.width = w+'px';
+  const {vw, vh} = viewportSize();
+  const rat = 1536/1024; // VIEW_W/VIEW_H
+  let w = vw, h = Math.round(w/rat);
+  if (h > vh){ h = vh; w = Math.round(h*rat); }
+  ui.stage.style.width  = w+'px';
   ui.stage.style.height = h+'px';
 }
-addEventListener('resize', fit); fit();
+addEventListener('resize', fit);
+if (window.visualViewport){
+  visualViewport.addEventListener('resize', fit);
+  visualViewport.addEventListener('scroll', fit); // iOS adressleisten-„scroll“
+}
+fit();
 
 export const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0 || navigator.msMaxTouchPoints>0;
 
 export function chooseControlLayout(){
-  const portrait = matchMedia('(orientation: portrait)').matches || innerHeight>innerWidth;
+  const {vw, vh} = viewportSize();
+  const portrait = (vh > vw);
   if(!isTouch){
     ui.controlsOverlay.style.display='none';
     ui.controlsBar.style.display='none';
@@ -38,14 +53,11 @@ export function chooseControlLayout(){
     return;
   }
   if(portrait){
-    // Nur Hinweis anzeigen, keine Controls
     ui.controlsOverlay.style.display='none';
     ui.controlsBar.style.display='none';
     ui.rotate.style.display='flex';
-    // kurze Anweisung im Startpanel anpassen
     if (ui.howto) ui.howto.innerHTML = 'Bitte das Handy ins Querformat drehen.';
   }else{
-    // Landscape: Overlay-Controls an, Portrait-Leiste aus, Hinweis weg
     ui.controlsOverlay.style.display='block';
     ui.controlsBar.style.display='none';
     ui.rotate.style.display='none';
@@ -54,6 +66,9 @@ export function chooseControlLayout(){
 }
 addEventListener('resize', chooseControlLayout);
 addEventListener('orientationchange', chooseControlLayout);
+if (window.visualViewport){
+  visualViewport.addEventListener('resize', chooseControlLayout);
+}
 chooseControlLayout();
 
 export function img(src){
@@ -73,7 +88,6 @@ export const bgLayers = [
   {img:img('Assets/BACK/BACK_ebene_2.png'), depth:0.8},
   {img:img('Assets/BACK/BACK_ebene_1.png'), depth:1.0}
 ];
-// Overlay
 export const overlay = img('Assets/MAIN_OVERLAY.png');
 
 // Drohne
