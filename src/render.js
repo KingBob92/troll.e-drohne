@@ -13,7 +13,14 @@ export function hookPointer(stageEl){
   stageEl.addEventListener('pointerleave', ()=>{ mouseX=mouseY=0; });
 }
 
-export function drawParallax(nx, ny){
+/**
+ * camNx/camNy sind 0..1 basierte Normalwerte der Kamera im Weltbereich.
+ * camNx = camera.x / (WORLD_W - VIEW_W)
+ * camNy = (optional; hier 0)
+ */
+export function drawParallax(camNx, camNy){
+  const nx = Math.max(0, Math.min(1, camNx || 0));
+  const ny = Math.max(0, Math.min(1, camNy || 0));
   for(const L of bgLayers){
     let sx = Math.round((nx + mouseX*0.05) * SCROLL_X_MAX * L.depth);
     if(sx<0) sx=0; if(sx>SCROLL_X_MAX) sx=SCROLL_X_MAX;

@@ -32,6 +32,7 @@ function attachJoystick(wrap, knob){
   }
   reset();
 
+  // Reiner Touch-Handler (echtes Multitouch)
   wrap.addEventListener('touchstart', e=>{
     if(active) return;
     const t=e.changedTouches[0]; joyId=t.identifier; active=true;
@@ -53,23 +54,25 @@ function attachJoystick(wrap, knob){
     if(!active) return;
     for(const t of list){ if(t.identifier===joyId){ active=false; joyId=null; reset(); break; } }
   }
-  wrap.addEventListener('touchend',   e=>endFrom(e.changedTouches));
-  wrap.addEventListener('touchcancel',e=>endFrom(e.changedTouches));
+  wrap.addEventListener('touchend',   e=>{ endFrom(e.changedTouches); /* kein preventDefault nötig */ }, {passive:true});
+  wrap.addEventListener('touchcancel',e=>{ endFrom(e.changedTouches); }, {passive:true});
 
-  // Pointer-Fallback (Desktop-Emu)
-  wrap.addEventListener('pointerdown', e=>{active=true; const c=center(); setKnob(e.clientX-c.x,e.clientY-c.y)});
-  addEventListener('pointermove', e=>{ if(!active) return; const c=center(); setKnob(e.clientX-c.x,e.clientY-c.y) });
-  addEventListener('pointerup',   ()=>{active=false; reset()});
+  // WICHTIG: Kein Pointer-Fallback auf Touch-Geräten, sonst „pointerup“ vom 2. Finger killt den Joystick!
+  if (!('ontouchstart' in window)) {
+    wrap.addEventListener('pointerdown', e=>{active=true; const c=center(); setKnob(e.clientX-c.x,e.clientY-c.y)});
+    addEventListener('pointermove', e=>{ if(!active) return; const c=center(); setKnob(e.clientX-c.x,e.clientY-c.y) });
+    addEventListener('pointerup',   ()=>{active=false; reset()});
+  }
 }
 
 function wireButtons(boostBtn, dockBtn, onDock){
   const setBoost=v=>{ mobile.boosting=v; };
-  const stop = e => e.stopPropagation();
+  const stop = e => { e.stopPropagation(); e.preventDefault(); };
 
-  ['touchstart','pointerdown','mousedown'].forEach(ev=>boostBtn?.addEventListener(ev, e=>{ setBoost(true); stop(e); }, {passive:true}));
-  ['touchend','touchcancel','pointerup','mouseup','mouseleave'].forEach(ev=>boostBtn?.addEventListener(ev, ()=>setBoost(false)));
+  ['touchstart','pointerdown','mousedown'].forEach(ev=>boostBtn?.addEventListener(ev, e=>{ setBoost(true); stop(e); }, {passive:false}));
+  ['touchend','touchcancel','pointerup','mouseup','mouseleave'].forEach(ev=>boostBtn?.addEventListener(ev, e=>{ setBoost(false); }, {passive:true}));
 
-  ['touchstart','pointerdown','mousedown'].forEach(ev=>dockBtn?.addEventListener(ev, e=>{ onDock(); stop(e); }, {passive:true}));
+  ['touchstart','pointerdown','mousedown'].forEach(ev=>dockBtn?.addEventListener(ev, e=>{ onDock(); stop(e); }, {passive:false}));
 }
 
 export function initTouch(onDock){
@@ -78,9 +81,9 @@ export function initTouch(onDock){
   attachJoystick(document.getElementById('joy_land'), document.getElementById('knob_land'));
   wireButtons(document.getElementById('boost_land'), document.getElementById('dock_land'), onDock);
 
-  // Portrait bar
-  attachJoystick(document.getElementById('joy_port'), document.getElementById('knob_port'));
-  wireButtons(document.getElementById('boost_port'), document.getElementById('dock_port'), onDock);
+  // Portrait bar (deaktiviert)
+  // attachJoystick(document.getElementById('joy_port'), document.getElementById('knob_port'));
+  // wireButtons(document.getElementById('boost_port'), document.getElementById('dock_port'), onDock);
 
   ui.howto.innerHTML = 'Links <b>Analog-Stick</b>, rechts <b>Boost</b> &amp; <b>Andocken</b>.';
 }

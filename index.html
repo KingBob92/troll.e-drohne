@@ -6,7 +6,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <style>
     html,body{margin:0;background:#0b0e18;color:#e8f0ff;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    body{overflow:auto;-webkit-tap-highlight-color:transparent}
+    /* Wichtig: kein Seiten-Scrollen auf Mobile (verhindert horizontales Mitziehen) */
+    body{overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:none}
     #page{display:flex;flex-direction:column;min-height:100svh}
     #stageWrap{display:grid;place-items:center}
     #stage{position:relative;width:1536px;height:1024px;touch-action:none}
@@ -27,19 +28,26 @@
     #controlsOverlay{position:absolute;inset:0;pointer-events:none;display:none}
     .ctrl-left{position:absolute;left:14px;bottom:14px;pointer-events:auto}
     .ctrl-right{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:12px;pointer-events:auto}
-    .joy{position:relative;width:150px;height:150px}
+    .joy{position:relative;width:150px;height:150px;touch-action:none;-webkit-user-select:none;user-select:none}
     .joy .base{position:absolute;inset:0;border-radius:50%;border:2px solid #2a3355;background:radial-gradient(#0e1430aa,#0e143022)}
-    .joy .knob{position:absolute;width:56px;height:56px;border-radius:50%;border:2px solid #6b8cff;background:#1d2547cc;transform:translate(-50%,-50%)}
-    .bigBtn{min-width:120px;min-height:50px;border-radius:12px;background:#1a2140;border:2px solid #2a3355}
-    #controlsBar{display:none;align-items:center;justify-content:space-between;gap:20px;padding:10px 14px;margin:8px auto 14px;max-width:1000px;width:clamp(300px,96vw,1000px)}
-    @media (pointer:coarse) and (orientation:landscape){#controlsOverlay{display:block}#controlsBar{display:none}}
-    @media (pointer:coarse) and (orientation:portrait){#controlsOverlay{display:none}#controlsBar{display:flex}}
+    .joy .knob{position:absolute;width:56px;height:56px;border-radius:50%;border:2px solid #6b8cff;background:#1d2547cc;transform:translate(-50%,-50%);touch-action:none}
+    .bigBtn{min-width:120px;min-height:50px;border-radius:12px;background:#1a2140;border:2px solid #2a3355;touch-action:none}
+    #controlsBar{display:none;align-items:center;justify-content:space-between;gap:20px;padding:10px 14px;margin:8px auto 14px;max-width:1000px;width:clamp(300px,96vw,1000px);touch-action:none}
+    /* Wir zeigen KEINE Portrait-Steuerung mehr, nur Overlay-Hinweis */
+    @media (pointer:coarse) and (orientation:landscape){#controlsOverlay{display:block}}
+    @media (pointer:coarse) and (orientation:portrait){#controlsOverlay{display:none}}
     @media (pointer:coarse){.bar{width:200px}}
     /* Hit-Tint/Haptik-Fallback */
     #hitTint{position:absolute;inset:0;pointer-events:none;background:rgba(255,90,90,0.12);opacity:0;transition:opacity .14s}
     #hitTint.show{opacity:1}
     .shake{animation:sh 120ms linear 1}
     @keyframes sh{0%{transform:translate(0,0)}25%{transform:translate(2px,0)}50%{transform:translate(-2px,0)}75%{transform:translate(1px,0)}100%{transform:translate(0,0)}}
+
+    /* Portrait-Rotate-Overlay (volle Seite) */
+    #rotate{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:99998;background:#0b0e18f2;backdrop-filter:blur(2px)}
+    #rotate .card{background:#0f1322; border:1px solid #2a3355; border-radius:14px; padding:16px 18px; box-shadow:0 4px 24px #0008; text-align:center; max-width:460px}
+    #rotate h3{margin:0 0 6px 0}
+    #rotate p{margin:6px 0 0 0; opacity:.9}
   </style>
 </head>
 <body>
@@ -92,8 +100,8 @@
     </div>
   </div>
 
-  <!-- Portrait touch: controls below canvas -->
-  <div id="controlsBar">
+  <!-- Portrait touch: (deaktiviert) -->
+  <div id="controlsBar" style="display:none;">
     <div class="joy" id="joy_port">
       <div class="base"></div>
       <div class="knob" id="knob_port"></div>
@@ -102,6 +110,14 @@
       <button class="bigBtn" id="boost_port">Boost</button>
       <button class="bigBtn" id="dock_port">Andocken</button>
     </div>
+  </div>
+</div>
+
+<!-- Rotate-Overlay -->
+<div id="rotate">
+  <div class="card">
+    <h3>Bitte drehen 📱↔️</h3>
+    <p>Dieses Spiel ist für den Landscape-Modus optimiert.</p>
   </div>
 </div>
 

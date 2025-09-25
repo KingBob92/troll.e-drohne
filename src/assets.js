@@ -15,6 +15,7 @@ export const ui = {
   controlsOverlay: $('#controlsOverlay'),
   controlsBar: $('#controlsBar'),
   stage: $('#stage'), stageWrap: $('#stageWrap'),
+  rotate: $('#rotate'),
 };
 
 export function fit(){
@@ -27,13 +28,32 @@ export function fit(){
 addEventListener('resize', fit); fit();
 
 export const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0 || navigator.msMaxTouchPoints>0;
+
 export function chooseControlLayout(){
-  if(!isTouch){ ui.controlsOverlay.style.display='none'; ui.controlsBar.style.display='none'; return; }
   const portrait = matchMedia('(orientation: portrait)').matches || innerHeight>innerWidth;
-  ui.controlsOverlay.style.display = portrait ? 'none' : 'block';
-  ui.controlsBar.style.display     = portrait ? 'flex' : 'none';
+  if(!isTouch){
+    ui.controlsOverlay.style.display='none';
+    ui.controlsBar.style.display='none';
+    ui.rotate.style.display='none';
+    return;
+  }
+  if(portrait){
+    // Nur Hinweis anzeigen, keine Controls
+    ui.controlsOverlay.style.display='none';
+    ui.controlsBar.style.display='none';
+    ui.rotate.style.display='flex';
+    // kurze Anweisung im Startpanel anpassen
+    if (ui.howto) ui.howto.innerHTML = 'Bitte das Handy ins Querformat drehen.';
+  }else{
+    // Landscape: Overlay-Controls an, Portrait-Leiste aus, Hinweis weg
+    ui.controlsOverlay.style.display='block';
+    ui.controlsBar.style.display='none';
+    ui.rotate.style.display='none';
+    if (ui.howto) ui.howto.innerHTML = 'Links Analog-Stick, rechts Boost/Andocken.';
+  }
 }
 addEventListener('resize', chooseControlLayout);
+addEventListener('orientationchange', chooseControlLayout);
 chooseControlLayout();
 
 export function img(src){
@@ -69,4 +89,3 @@ export const SPRITES = {
   stone:    [ img('Assets/PROPS/Stone_1.png'),    img('Assets/PROPS/Stone_2.png'),    img('Assets/PROPS/Stone_3.png') ],
   trash:    [ img('Assets/PROPS/Trash_1.png'),    img('Assets/PROPS/Trash_2.png'),    img('Assets/PROPS/Trash_3.png'), img('Assets/PROPS/Trash_4.png'), img('Assets/PROPS/Trash_5.png') ],
 };
-
