@@ -1,17 +1,18 @@
 // src/game.js
 import { VIEW_W, VIEW_H, WORLD_W, BG_W, CFG, MARGIN_X, MARGIN_TOP, MARGIN_BOTTOM,
          THRUST, MAX_SPD, DRAG, GREMLIN_BASE, OBJ_DRAG, WALL_BOUNCE, RESTITUTION, DEBUG,
-         OBSTACLE_DENSITY, HUD } from './const.js';
-import { $, cvs, ctx, ui, isTouch, fit, chooseControlLayout } from './assets.js';
-import { sfx, music, VOICE_PRI, voice } from './audio.js';
-import { keys, mobile, initTouch, vibrate } from './input.js';
+         OBSTACLE_DENSITY, HUD, COMET } from './const.js';
+import { $, cvs, ctx, ui, isTouch, fit, chooseControlLayout, cometSprite, preloadImages } from './assets.js';
+import { sfx, music, VOICE_PRI, voice, preloadAllAudio } from './audio.js';
+import { keys, keyJust, mobile, initTouch, vibrate, gamepad, startGamepadListeners, pollInputs } from './input.js';
 import { hookPointer, drawParallax, drawOverlay } from './render.js';
 import { SPRITES, dr } from './assets.js';
 import { safetyInit } from './safety.js';
 
 // —— Welt-Bounds ——
 const BOUNDS = { minX:MARGIN_X, maxX:WORLD_W-MARGIN_X, minY:MARGIN_TOP, maxY:VIEW_H-MARGIN_BOTTOM };
-const START_W = 220; const PROP_LEFT_WALL = BOUNDS.minX + START_W;
+const START_W = 220;
+const PROP_LEFT_WALL = BOUNDS.minX + START_W;
 
 // Kamera
 const camera = { x:0, y:0 };
@@ -57,9 +58,18 @@ let wallHitCD = 0;
 
 // —— Gremlin ——
 const GREMLIN={ strength:GREMLIN_BASE.strength, targetX:0,targetY:0,curX:0,curY:0,t:0, changeEvery:1.0 };
-function retargetGremlin(){ const a=Math.random()*Math.PI*2, m=0.6+Math.random()*0.9; GREMLIN.targetX=Math.cos(a)*m; GREMLIN.targetY=Math.sin(a)*m; GREMLIN.changeEvery = GREMLIN_BASE.changeMin + Math.random()*(GREMLIN_BASE.changeMax-GREMLIN_BASE.changeMin); }
+function retargetGremlin(){
+  const a=Math.random()*Math.PI*2, m=0.6+Math.random()*0.9;
+  GREMLIN.targetX=Math.cos(a)*m; GREMLIN.targetY=Math.sin(a)*m;
+  GREMLIN.changeEvery = GREMLIN_BASE.changeMin + Math.random()*(GREMLIN_BASE.changeMax-GREMLIN_BASE.changeMin);
+}
 retargetGremlin();
-function updGremlin(dt){ GREMLIN.t+=dt; const f=1-Math.exp(-3.2*dt); GREMLIN.curX+=(GREMLIN.targetX-GREMLIN.curX)*f; GREMLIN.curY+=(GREMLIN.targetY-GREMLIN.curY)*f; if(GREMLIN.t>=GREMLIN.changeEvery){GREMLIN.t=0;retargetGremlin();} }
+function updGremlin(dt){
+  GREMLIN.t+=dt; const f=1-Math.exp(-3.2*dt);
+  GREMLIN.curX+=(GREMLIN.targetX-GREMLIN.curX)*f;
+  GREMLIN.curY+=(GREMLIN.targetY-GREMLIN.curY)*f;
+  if(GREMLIN.t>=GREMLIN.changeEvery){GREMLIN.t=0;retargetGremlin();}
+}
 
 // —— Obstacles ——
 const obstacles=[];
@@ -68,12 +78,13 @@ function makeObstacle(cfg){
   const sprite = rand(SPRITES[cfg.kind]);
   const ang=Math.random()*Math.PI*2, spd=cfg.speed??40, mass=cfg.mass??(cfg.big?2.0:1.0);
   let x=cfg.x, y=cfg.y;
-  if (x==null){ 
-    do{ x = BOUNDS.minX+START_W+10 + Math.random()*((BOUNDS.maxX-10)-(BOUNDS.minX+START_W+10)); }
+  if (x==null){
+    do{ x = BOUNDS.minX+START_W+10 + Math.random()*( (BOUNDS.maxX-10)-(BOUNDS.minX+START_W+10) ); }
     while(x<PROP_LEFT_WALL+10);
   }
   if (y==null){ y=BOUNDS.minY+20+Math.random()*(BOUNDS.maxY-BOUNDS.minY-40); }
-  return { type:cfg.kind,big:!!cfg.big,dmg:cfg.dmg??(cfg.big?15:5), x,y, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
+  return { type:cfg.kind,big:!!cfg.big,dmg:cfg.dmg??(cfg.big?25:5), x,y,
+           vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd,
            r:cfg.r??24, angle:Math.random()*Math.PI*2, angVel:cfg.rot??0.8, sprite, mass };
 }
 function spawnObs(){
@@ -82,16 +93,20 @@ function spawnObs(){
   const A = Math.round(OBSTACLE_DENSITY.ASTEROID_PER_VIEW * mul);
   const S = Math.round(OBSTACLE_DENSITY.STONE_PER_VIEW   * mul);
   const T = Math.round(OBSTACLE_DENSITY.TRASH_PER_VIEW   * mul);
-  for(let i=0;i<A;i++) obstacles.push(makeObstacle({kind:'asteroid', big:true, dmg:15, r:38+Math.random()*10, speed:20+Math.random()*40, rot:(Math.random()*2-1)*0.6}));
-  for(let i=0;i<S;i++) obstacles.push(makeObstacle({kind:'stone', big:false, dmg:5, r:20+Math.random()*8, speed:25+Math.random()*55, rot:(Math.random()*2-1)*1.0}));
-  for(let i=0;i<T;i++) obstacles.push(makeObstacle({kind:'trash', big:false, dmg:5, r:15+Math.random()*6, speed:30+Math.random()*60, rot:(Math.random()*2-1)*1.4, mass:0.4}));
+  for(let i=0;i<A;i++) obstacles.push(makeObstacle({kind:'asteroid', big:true, dmg:25, r:68+Math.random()*10, speed:20+Math.random()*40, rot:(Math.random()*2-1)*0.6}));
+  for(let i=0;i<S;i++) obstacles.push(makeObstacle({kind:'stone', big:false, dmg:5, r:25+Math.random()*8, speed:25+Math.random()*55, rot:(Math.random()*2-1)*1.0}));
+  for(let i=0;i<T;i++) obstacles.push(makeObstacle({kind:'trash', big:false, dmg:1, r:10+Math.random()*6, speed:50+Math.random()*60, rot:(Math.random()*2-1)*1.4, mass:0.4}));
 }
 
-// —— Anchor (größer + kräftigeres Pulsieren) ——
+// —— Anchor ——
 const anchor={ baseX: BOUNDS.maxX-180, baseY:(BOUNDS.minY+BOUNDS.maxY)*0.45, rO:82, rI:42, holdLeft:CFG.DOCK_HOLD, active:false, t:0,
                ampX:26, ampY:14, speedX:0.6, speedY:0.9, phase:Math.PI/4, x:0,y:0 };
 anchor.x=anchor.baseX; anchor.y=anchor.baseY;
-function updAnchor(dt){ anchor.t+=dt; anchor.x=anchor.baseX+Math.cos(anchor.t*anchor.speedX+anchor.phase)*anchor.ampX; anchor.y=anchor.baseY+Math.sin(anchor.t*anchor.speedY)*anchor.ampY; }
+function updAnchor(dt){
+  anchor.t+=dt;
+  anchor.x=anchor.baseX+Math.cos(anchor.t*anchor.speedX+anchor.phase)*anchor.ampX;
+  anchor.y=anchor.baseY+Math.sin(anchor.t*anchor.speedY)*anchor.ampY;
+}
 
 let dockAttempt=false,inAnchor=false,dockNode=null;
 function tryDock(){
@@ -103,7 +118,9 @@ function tryDock(){
   stopDock();
   dockNode = sfx.play('count');
 }
-function stopDock(){ if(dockNode){ try{dockNode.pause(); dockNode.currentTime=0;}catch(_){ } dockNode=null; } }
+function stopDock(){
+  if(dockNode){ try{dockNode.pause(); dockNode.currentTime=0;}catch(_){ } dockNode=null; }
+}
 function updDock(dt){
   inAnchor = ((drone.x-anchor.x)**2 + (drone.y-anchor.y)**2) <= (drone.r+anchor.rI)*(drone.r+anchor.rI);
   if(!dockAttempt) return;
@@ -117,7 +134,7 @@ function updDock(dt){
   }
 }
 
-// —— HUD: Richtungs-Pfeil mit Farbe/Blink + Distanz-Badge AM PFEIL ——
+// —— HUD: Richtungs-Pfeil mit Distanz-Badge ——
 function drawAnchorHUD(screenX, screenY){
   const onX = screenX>=0 && screenX<=VIEW_W;
   const onY = screenY>=0 && screenY<=VIEW_H;
@@ -136,10 +153,9 @@ function drawAnchorHUD(screenX, screenY){
   if (dist < A.NEAR){
     const t = performance.now() / 1000;
     const pulse = 0.5 + 0.5 * Math.sin(2*Math.PI*A.BLINK_HZ * t);
-    alpha = 0.55 + 0.45 * pulse; // sichtbares, sanftes Blinken
+    alpha = 0.55 + 0.45 * pulse;
   }
 
-  // Größe: näher → größer
   const tNorm = Math.max(0, Math.min(1, dist / A.MID));
   const halfLen = Math.round(A.SIZE_MIN + (A.SIZE_MAX - A.SIZE_MIN) * (1 - tNorm));
 
@@ -151,7 +167,6 @@ function drawAnchorHUD(screenX, screenY){
   x = clamp(x, A.MARGIN, VIEW_W-A.MARGIN);
   y = clamp(y, A.MARGIN, VIEW_H-A.MARGIN);
 
-  // Pfeil
   ctx.save();
   ctx.translate(x,y);
   ctx.rotate(ang);
@@ -168,7 +183,6 @@ function drawAnchorHUD(screenX, screenY){
   ctx.fill();
   ctx.stroke();
 
-  // Distanz-Badge am Pfeil (oberhalb)
   const meters = Math.max(0, Math.round(dist));
   const label = `${meters} m`;
 
@@ -206,14 +220,14 @@ function drawAnchorHUD(screenX, screenY){
   ctx.restore();
 }
 
-// —— Anchor im Screen zeichnen (sichtbar? + Screen-Koords) ——
+// —— Anchor im Screen zeichnen ——
 function drawAnchorScreen(){
   const sx = anchor.x - camera.x;
   const sy = anchor.y - camera.y;
   const visible = sx>-anchor.rO && sx<(VIEW_W+anchor.rO) && sy>-anchor.rO && sy<(VIEW_H+anchor.rO);
 
   if(visible){
-    const pulse=0.6+0.4*Math.sin(performance.now()/400); // kräftiger & schneller
+    const pulse=0.6+0.4*Math.sin(performance.now()/400);
     ctx.strokeStyle=`rgba(120,255,160,${0.5+0.35*pulse})`;
     ctx.lineWidth=6; ctx.beginPath(); ctx.arc(sx,sy,anchor.rO,0,Math.PI*2); ctx.stroke();
     ctx.lineWidth=3; ctx.beginPath(); ctx.arc(sx,sy,anchor.rI*1.25,0,Math.PI*2); ctx.stroke();
@@ -221,13 +235,76 @@ function drawAnchorScreen(){
       const total=CFG.DOCK_HOLD, remain=Math.max(0,anchor.holdLeft);
       const p=1 - (remain/total);
       const progR = anchor.rI + (anchor.rO - anchor.rI) * (1 - p);
-      ctx.strokeStyle='rgba(120,255,200,0.9)'; ctx.lineWidth=5.5; ctx.beginPath(); ctx.arc(sx,sy,progR,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle='rgba(120,255,200,0.9)';
+      ctx.lineWidth=5.5; ctx.beginPath(); ctx.arc(sx,sy,progR,0,Math.PI*2); ctx.stroke();
       ctx.fillStyle='rgba(120,255,160,0.16)'; ctx.beginPath(); ctx.arc(sx,sy,anchor.rO,0,Math.PI*2); ctx.fill();
       ctx.fillStyle='#6bffb0'; ctx.font='600 18px system-ui,Segoe UI,Roboto,Arial'; ctx.textAlign='center';
       ctx.fillText(`Andocken… (${remain.toFixed(1)} s)`, sx, sy-(anchor.rO+18));
     }
   }
   return { visible, sx, sy };
+}
+
+// —— Komet (selten, spontan) ——
+let comet = null;
+
+function maybeSpawnComet(dt){
+  if (comet) return;
+  const p = dt / COMET.MEAN_INTERVAL; // Poisson
+  if (Math.random() < p){
+    const y = Math.round( MARGIN_TOP + COMET.Y_MARGIN + Math.random()*( (VIEW_H - MARGIN_TOP - MARGIN_BOTTOM) - COMET.Y_MARGIN*2 ) );
+    const speed = -(COMET.SPEED_MIN + Math.random()*(COMET.SPEED_MAX - COMET.SPEED_MIN));
+    const x = camera.x + VIEW_W + 100;
+    comet = { x, y, vx: speed, r: COMET.RADIUS, drawW: 420, drawH: 180 };
+  }
+}
+function updateComet(dt){
+  if (!comet) return;
+  comet.x += comet.vx * dt;
+  if (comet.x < camera.x - COMET.DESPAWN_PAD){ comet = null; }
+}
+function drawComet(){
+  if (!comet) return;
+  const sx = Math.round(comet.x - camera.x);
+  const sy = Math.round(comet.y - camera.y);
+  if (sx > -comet.drawW && sx < VIEW_W + comet.drawW && sy > -comet.drawH && sy < VIEW_H + comet.drawH){
+    if (cometSprite.complete && cometSprite.naturalWidth){
+      ctx.drawImage(cometSprite, sx - comet.drawW/2, sy - comet.drawH/2, comet.drawW, comet.drawH);
+    } else {
+      ctx.fillStyle='#ff9b3b'; ctx.beginPath(); ctx.arc(sx, sy, comet.r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+}
+function cometCollisions(){
+  if (!comet) return;
+  const headX = comet.x + COMET.HEAD_OFFSET_X;
+  const headY = comet.y;
+
+  // Drohne
+  const dxD = drone.x - headX, dyD = drone.y - headY;
+  const d2D = dxD*dxD + dyD*dyD, rSumD = comet.r + drone.r;
+  if (d2D < rSumD*rSumD){
+    const d = Math.sqrt(d2D)||1, nx = dxD/d, ny = dyD/d;
+    const j = Math.abs(comet.vx) * 2.2;
+    drone.vx += nx * j; drone.vy += ny * (j*0.6);
+    if (gameRunning) applyDamage(COMET.DAMAGE);
+    const overlap = (rSumD - d);
+    drone.x += nx * overlap * 0.8; drone.y += ny * overlap * 0.8;
+  }
+
+  // Hindernisse
+  for (const o of obstacles){
+    const dx = o.x - headX, dy = o.y - headY;
+    const rSum = o.r + comet.r;
+    const d2 = dx*dx + dy*dy;
+    if (d2 >= rSum*rSum) continue;
+    const d = Math.sqrt(d2)||1, nx = dx/d, ny = dy/d;
+    const overlap = (rSum - d);
+    o.x += nx * overlap * 1.05; o.y += ny * overlap * 1.05;
+    const push = Math.abs(comet.vx) * COMET.PUSH_FORCE;
+    o.vx = o.vx * 0.5 + (-Math.abs(push) * (0.6 + 0.4*Math.random())) * 1.0;
+    o.vy = o.vy * 0.5 + (ny * push * 0.3);
+  }
 }
 
 // —— Obstacles update/draw ——
@@ -252,11 +329,13 @@ function updDrawObstacles(dt){
         const aPush=overlap*(mB/sum), bPush=overlap*(mA/sum);
         A.x -= nx*aPush; A.y -= ny*aPush; B.x += nx*bPush; B.y += ny*bPush;
         const relVx=B.vx-A.vx, relVy=B.vy-A.vy, sepV=relVx*nx+relVy*ny;
-        if(sepV<0){ const j=-(1+RESTITUTION)*sepV/(1/mA+1/mB), jx=j*nx, jy=j*ny; A.vx-=jx/mA; A.vy-=jy/mA; B.vx+=jx/mB; B.vy+=jy/mB; }
+        if(sepV<0){
+          const j=-(1+RESTITUTION)*sepV/(1/mA+1/mB), jx=j*nx, jy=j*ny;
+          A.vx-=jx/mA; A.vy-=jy/mA; B.vx+=jx/mB; B.vy+=jy/mB;
+        }
       }
     }
   }
-  // Culling
   for(const o of obstacles){
     const sx = o.x - camera.x;
     const sy = o.y - camera.y;
@@ -276,41 +355,60 @@ function handleDroneCollisions(){
     const d=Math.sqrt(d2)||1, ux=dx/d, uy=dy/d;
     const rel=(drone.vx-o.vx)*ux+(drone.vy-o.vy)*uy;
     const mD=1.0, mO=o.mass??(o.big?2.0:1.0), rest=0.7;
-    const j=-(1+rest)*rel/(1/mD+1/mO);
+    const j=-(1+RESTITUTION)*rel/(1/mD+1/mO);
     let df=1.0, of=1.0; if(o.type==='trash'){ df=0.25; of=1.2; }
     drone.vx += (j*ux/mD)*df; drone.vy += (j*uy/mD)*df;
     o.vx     -= (j*ux/mO)*of; o.vy     -= (j*uy/mO)*of;
-    const overlap=rSum-d; if(overlap>0){ const push=overlap*0.7; drone.x+=ux*push; drone.y+=uy*push; if(o.type==='trash'){o.x-=ux*push*0.4; o.y-=uy*push*0.4;} }
+    const overlap=rSum-d;
+    if(overlap>0){
+      const push=overlap*0.7; drone.x+=ux*push; drone.y+=uy*push;
+      if(o.type==='trash'){o.x-=ux*push*0.4; o.y-=uy*push*0.4;}
+    }
     if(gameRunning){ applyDamage(o.dmg); }
     if(!firstCollision){ firstCollision=true; say('Rohland','Sanfter. Du fliegst das Ding wie ’n Presslufthammer.'); }
   }
 }
 
-// —— Drohne ——
+// —— Drohne + Inputs (Edge-Trigger-Boost) ——
 function drawDrone(dt){
+  pollInputs(); // Gamepad/Tastatur aktualisieren
   updGremlin(dt);
   if (wallHitCD>0) wallHitCD -= dt;
 
-  let ix=0,iy=0;
-  if(isTouch){ ix=mobile.ix; iy=mobile.iy; }
-  else{
-    if(keys['a']||keys['arrowleft']) ix-=1;
+  // Priorität: Gamepad > Touch > Keyboard
+  let ix=0, iy=0;
+  if (gamepad.connected){ ix = gamepad.ix; iy = gamepad.iy; }
+  else if (isTouch){ ix = mobile.ix; iy = mobile.iy; }
+  else {
+    if(keys['a']||keys['arrowleft'])  ix-=1;
     if(keys['d']||keys['arrowright']) ix+=1;
-    if(keys['w']||keys['arrowup']) iy-=1;
-    if(keys['s']||keys['arrowdown']) iy+=1;
+    if(keys['w']||keys['arrowup'])    iy-=1;
+    if(keys['s']||keys['arrowdown'])  iy+=1;
   }
 
   let accel=THRUST, maxSpd=MAX_SPD;
-  const wantBoost = isTouch ? mobile.boosting : (keys['shift']||keys['shiftleft']||keys['shiftright']);
-  if(drone.boostCD<=0 && wantBoost) drone.boostLeft = CFG.BOOST_TIME;
-  if(drone.boostLeft>0){ accel*=CFG.BOOST_FACTOR; maxSpd*=CFG.BOOST_FACTOR; drone.boostLeft-=dt; if(drone.boostLeft<=0){drone.boostLeft=0;drone.boostCD=CFG.BOOST_COOLDOWN}}
-  else if(drone.boostCD>0){ drone.boostCD-=dt; }
 
-  if(ix||iy){ const l=Math.hypot(ix,iy)||1; ix/=l; iy/=l; drone.vx+=ix*accel*dt; drone.vy+=iy*accel*dt; }
+  // Boost nur bei „just pressed“
+  const boostJust = gamepad.justBoost || mobile.boostPressed || keyJust.boost;
+  if (drone.boostCD<=0 && boostJust){ drone.boostLeft = CFG.BOOST_TIME; }
+  mobile.boostPressed = false; keyJust.boost = false;
+
+  if(drone.boostLeft>0){
+    accel*=CFG.BOOST_FACTOR; maxSpd*=CFG.BOOST_FACTOR;
+    drone.boostLeft-=dt;
+    if(drone.boostLeft<=0){ drone.boostLeft=0; drone.boostCD=CFG.BOOST_COOLDOWN; }
+  } else if(drone.boostCD>0){ drone.boostCD-=dt; }
+
+  if(ix||iy){
+    const l=Math.hypot(ix,iy)||1; ix/=l; iy/=l;
+    drone.vx+=ix*accel*dt; drone.vy+=iy*accel*dt;
+  }
+
   drone.vx += GREMLIN.curX * GREMLIN.strength * dt;
   drone.vy += GREMLIN.curY * GREMLIN.strength * dt;
   drone.vx -= drone.vx*Math.min(1,DRAG*dt);
   drone.vy -= drone.vy*Math.min(1,DRAG*dt);
+
   const sp=Math.hypot(drone.vx,drone.vy);
   if(sp>maxSpd){ const s=maxSpd/sp; drone.vx*=s; drone.vy*=s; }
 
@@ -326,17 +424,17 @@ function drawDrone(dt){
   camera.x = clamp(drone.x - VIEW_W/2, 0, WORLD_W - VIEW_W);
   camera.y = 0;
 
+  if (gamepad.justDock) tryDock();
+
+  // Draw
   const sx = drone.x - camera.x;
   const sy = drone.y - camera.y;
-
   const spr = (drone.boostLeft>0 && dr.boost.complete && dr.boost.naturalWidth) ? dr.boost :
               (sp>40 && dr.on.complete && dr.on.naturalWidth) ? dr.on :
               dr.off;
   const size=64, half=size/2;
   if(spr.complete && spr.naturalWidth) ctx.drawImage(spr, Math.round(sx-half), Math.round(sy-half), size, size);
   else { ctx.fillStyle='#5078c8'; ctx.fillRect(sx-20,sy-14,40,28); }
-
-  return {spd:sp};
 }
 
 // —— Main loop ——
@@ -344,32 +442,31 @@ let last = performance.now()/1000;
 function loop(){
   const now=performance.now()/1000, dt=Math.min(0.033, now-last); last=now;
 
+  pollInputs();
+  maybeSpawnComet(dt);
   updAnchor(dt);
+  updateComet(dt);
+
   drawFrame(dt);
   requestAnimationFrame(loop);
 }
 
 function drawFrame(dt){
-  // Parallaxe: X nach Kamera, Y leicht nach Drohnenhöhe
   const camNx = (WORLD_W - VIEW_W) > 0 ? (camera.x / (WORLD_W - VIEW_W)) : 0;
   const camNy = (drone.y - BOUNDS.minY) / (BOUNDS.maxY - BOUNDS.minY);
   drawParallax(camNx, camNy);
 
-  // Anchor & Obstacles & Drone
   const anchorInfo = drawAnchorScreen();
   updDrawObstacles(dt);
+  drawComet();
+
   if (gameRunning) drawDrone(dt); else drawDrone(0);
   handleDroneCollisions();
+  cometCollisions();
 
-  // UI-Overlay
   drawOverlay();
+  if (!anchorInfo.visible) drawAnchorHUD(anchorInfo.sx, anchorInfo.sy);
 
-  // HUD-Pfeil NACH Overlay – immer sichtbar, wenn Anchor off-screen
-  if (!anchorInfo.visible) {
-    drawAnchorHUD(anchorInfo.sx, anchorInfo.sy);
-  }
-
-  // Zeit/Ende
   if(gameRunning){
     timeLeft -= dt;
     if (!end10Warned && timeLeft <= 10) {
@@ -396,49 +493,103 @@ function showEnd(ok,title,msg){
   ui.end.style.display='flex';
 }
 
-// Start/Retry
-ui.btnStart.addEventListener('click', ()=>{
-  // AUDIO hart freischalten
-  sfx.unlock(); voice.unlock();
-  music.currentTime=0; music.volume=0.9;
-  music.play().catch(()=>{}); // im Zweifel wird nach Unlock erneut versucht
-  sfx.play('start');
+// —— Loading / Start ——
+function setLoadProgress(done,total){
+  const p = total? Math.round(done*100/total):100;
+  if (ui.loadBar) ui.loadBar.style.width = p+'%';
+  if (ui.loadMsg) ui.loadMsg.textContent = p+'%';
+}
+function hide(el){ if(!el) return; el.style.display='none'; el.classList.add('hide'); }
+function showFlex(el){ if(!el) return; el.classList.remove('hide'); el.style.display='flex'; }
+function showStartPanel(){ hide(ui.loading); showFlex(ui.start); }
 
-  gameRunning=true; timeLeft=CFG.TIME_LIMIT; firstCollision=false; health=100; updateHP();
-  ui.start.style.display='none';
-  if (isTouch) ui.howto.innerHTML = 'Links Analog-Stick, rechts Boost/Andocken.';
-  setTimeout(()=>{ if(gameRunning) voice.playKey('start', VOICE_PRI.start); }, 800);
-  clearTimeout(voice.dialogTimer); voice.dialogTimer = setTimeout(()=>voice.playRandomDialog(), 4000);
-});
-ui.btnRetry.addEventListener('click', ()=>location.reload());
+async function preloadAll(){
+  try{
+    let imgsTotal=0;
+    await preloadImages((d,t)=>{ imgsTotal=t; setLoadProgress(d,t); });
+    await preloadAllAudio((d,t)=>{ setLoadProgress(imgsTotal + d, imgsTotal + t); });
+  } catch(err){ console.error('[preloadAll] Fehler:', err); }
+  finally { showStartPanel(); }
+}
 
-// Keyboard: Dock
+// ⚠️ WICHTIG: Unlock ABWARTEN, dann Start-SFX, erst DANACH Voice & Musik
+async function startGame(){
+  try{
+    // 1) Explizit auf Unlock warten (verhindert, dass irgendein Audio-Element noch gemutet ist)
+    console.log('[start] unlocking audio…');
+    await sfx.unlock();
+    await voice.unlock();
+    console.log('[start] audio unlocked.');
+
+    // 2) Start-SFX
+    const node = sfx.play('start', { volume: 1.0 });
+    console.log('[start] SFX start played ->', !!node);
+
+    const startVoiceAndMusic = () => {
+      console.log('[start] starting voice + music');
+      voice.playKey('start', VOICE_PRI.start);
+      music.currentTime = 0;
+      music.volume = 0.0;
+      music.play().catch(()=>{});
+      const t0 = performance.now();
+      const fade = ()=> {
+        const dt = (performance.now() - t0) / 1000;
+        music.volume = Math.min(0.9, dt * 0.9); // ~1s Fade-in
+        if (music.volume < 0.9) requestAnimationFrame(fade);
+      };
+      requestAnimationFrame(fade);
+    };
+
+    // 3) Entweder warten wir aufs Ende des SFX…
+    let ended = false;
+    if (node) {
+      node.onended = () => {
+        if (ended) return;
+        ended = true;
+        startVoiceAndMusic();
+      };
+    }
+    // …oder Fallback nach 1200ms (falls onended nicht feuert)
+    setTimeout(()=>{ if (!ended) { ended = true; startVoiceAndMusic(); } }, 1200);
+
+    // 4) Spielzustand
+    gameRunning=true; timeLeft=CFG.TIME_LIMIT; firstCollision=false; health=100; updateHP();
+    hide(ui.start);
+    if (isTouch && ui.howto) ui.howto.innerHTML = 'Links Analog-Stick, Boost mit Tippen (Square), Andocken (X/E).';
+
+    clearTimeout(voice.dialogTimer);
+    voice.dialogTimer = setTimeout(()=>voice.playRandomDialog(), 4000);
+
+  } catch(err){
+    console.error('[startGame] Fehler:', err);
+  }
+}
+
+ui.btnStart?.addEventListener('click', ()=> startGame());
+$('#btnRetry')?.addEventListener('click', ()=> location.reload());
 addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='e') tryDock(); });
 
 // Init
 initTouch(tryDock);
+startGamepadListeners();
 hookPointer(ui.stage);
 fit(); chooseControlLayout();
 spawnObs();
 updateHP();
 ui.time.textContent = fmt(timeLeft);
 safetyInit();
+preloadAll();
+setTimeout(()=>{ if (ui.loading && ui.loading.style.display!=='none') showStartPanel(); }, 1500);
 
-// Debug-Snapshot
 if (DEBUG) {
-  window.__gameDebug = () => {
-    const spd = Math.hypot(drone.vx, drone.vy);
-    return {
-      timeLeft,
-      health,
-      obstacles: obstacles.length,
-      drone: { x: drone.x, y: drone.y, vx: drone.vx, vy: drone.vy, spd },
-      camera: { x: camera.x },
-      gremlin: { curX: GREMLIN.curX, curY: GREMLIN.curY },
-      anchor: { inAnchor, active: anchor.active, holdLeft: anchor.holdLeft, wx: anchor.x, wy: anchor.y },
-      audio: { sfxUnlocked: true, voiceUnlocked: true }
-    };
-  };
+  window.__gameDebug = () => ({
+    timeLeft, health,
+    debugAudio: {
+      musicVol: music.volume,
+      voiceUnlocked: voice.unlocked,
+      sfxUnlocked: sfx.unlocked,
+    }
+  });
 }
 
 requestAnimationFrame(loop);

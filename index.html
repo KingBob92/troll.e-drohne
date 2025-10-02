@@ -3,29 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <title>TROLL.e – Drohnen-Andocken</title>
-
-  <!-- Volle Breite/Höhe, keine Zoom-Gesten, iOS Safe-Area -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <meta name="theme-color" content="#0b0e18" />
-
-  <!-- PWA / Android -->
   <link rel="manifest" href="manifest.webmanifest" />
-
-  <!-- iOS „Zum Home-Bildschirm“ -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="TROLL.e" />
   <link rel="apple-touch-icon" href="Assets/icons/icon-180.png" />
-
   <style>
     html,body{margin:0;height:100%;background:#0b0e18;color:#e8f0ff;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
     body{overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:none}
-
     #page{display:flex;flex-direction:column;min-height:100dvh;height:100dvh}
     #stageWrap{display:grid;place-items:center;width:100vw;height:100dvh}
     #stage{position:relative;width:1536px;height:1024px;touch-action:none}
     canvas{display:block;width:100%;height:100%}
-
     .overlay{position:absolute;left:0;right:0;pointer-events:none}
     #uiTop{top:12px;display:flex;justify-content:space-between;gap:12px;padding:0 16px;align-items:center}
     .stack{display:flex;gap:12px;align-items:center}
@@ -33,14 +24,10 @@
     .bar{position:relative;width:260px;height:14px;background:#1a2140;border:1px solid #2a3355;border-radius:8px;overflow:hidden}
     .bar>span{position:absolute;left:0;top:0;bottom:0;width:100%;background:#6bffb0}
     #subtitle{bottom:12px;text-align:center;padding:6px 10px;margin:0 16px;background:#101424;border:1px solid #28304e;border-radius:8px;min-height:2.2em}
-
-    #start,#end{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-    #end{display:none}
+    #start,#end{position:absolute;inset:0;display:none;align-items:center;justify-content:center}
     .panel{pointer-events:auto;background:#0f1322cc;border:1px solid #2a3355;border-radius:12px;padding:18px 20px;text-align:center;box-shadow:0 4px 24px #0008;max-width:680px}
     button{appearance:none;border:1px solid #2a3355;background:#161b30;color:#e8f0ff;padding:10px 14px;border-radius:10px;font-weight:600;cursor:pointer}
     button:hover{filter:brightness(1.07)}
-
-    /* Mobile Controls + Safe Area */
     #controlsOverlay{position:absolute;inset:0;pointer-events:none;display:none}
     .ctrl-left{position:absolute;left:calc(14px + env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));pointer-events:auto}
     .ctrl-right{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;pointer-events:auto}
@@ -48,26 +35,27 @@
     .joy .base{position:absolute;inset:0;border-radius:50%;border:2px solid #2a3355;background:radial-gradient(#0e1430aa,#0e143022)}
     .joy .knob{position:absolute;width:56px;height:56px;border-radius:50%;border:2px solid #6b8cff;background:#1d2547cc;transform:translate(-50%,-50%);touch-action:none}
     .bigBtn{min-width:120px;min-height:50px;border-radius:12px;background:#1a2140;border:2px solid #2a3355;touch-action:none}
-
     #controlsBar{display:none;align-items:center;justify-content:space-between;gap:20px;padding:10px 14px;margin:8px auto 14px;max-width:1000px;width:clamp(300px,96vw,1000px);touch-action:none}
-
     @media (pointer:coarse) and (orientation:landscape){#controlsOverlay{display:block}}
     @media (pointer:coarse) and (orientation:portrait){#controlsOverlay{display:none}}
     @media (pointer:coarse){.bar{width:200px}}
-
     #hitTint{position:absolute;inset:0;pointer-events:none;background:rgba(255,90,90,0.12);opacity:0;transition:opacity .14s}
     #hitTint.show{opacity:1}
-
     #rotate{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:99998;background:#0b0e18f2;backdrop-filter:blur(2px)}
     #rotate .card{background:#0f1322; border:1px solid #2a3355; border-radius:14px; padding:16px 18px; box-shadow:0 4px 24px #0008; text-align:center; max-width:460px}
     #rotate h3{margin:0 0 6px 0}
     #rotate p{margin:6px 0 0 0; opacity:.9}
-
-    /* A2HS Banner (optional, wenn du es weiter nutzen willst) */
     #a2hs{position:fixed;left:env(safe-area-inset-left);right:env(safe-area-inset-right);bottom:env(safe-area-inset-bottom);z-index:99999;display:none}
     #a2hs .wrap{margin:8px auto;max-width:820px;background:#0f1322cc;border:1px solid #2a3355;border-radius:12px;padding:10px 12px;display:flex;gap:12px;align-items:center}
     #a2hs .txt{flex:1}
     #a2hs button{white-space:nowrap}
+    /* Loading */
+    #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0e18;z-index:3}
+    #loading .box{background:#0f1322cc;border:1px solid #2a3355;border-radius:12px;padding:16px 18px;box-shadow:0 4px 24px #0008;max-width:560px;text-align:center}
+    #bar{height:10px;background:#1b2344;border:1px solid #2a3355;border-radius:10px;overflow:hidden}
+    #bar>i{display:block;height:100%;width:0;background:#6b8cff}
+    #loadMsg{opacity:.9;margin:8px 0 0 0}
+    .hide{display:none}
   </style>
 </head>
 <body>
@@ -90,19 +78,29 @@
         <div id="subtitle" class="overlay"></div>
         <div id="hitTint"></div>
 
-        <div id="start">
+        <!-- Loading (nur Progress, kein Button) -->
+        <div id="loading">
+          <div class="box">
+            <h3>Assets werden geladen…</h3>
+            <div id="bar"><i></i></div>
+            <p id="loadMsg">0%</p>
+          </div>
+        </div>
+
+        <!-- Start/End -->
+        <div id="start" style="display:none">
           <div class="panel">
             <h2>Drohneneinsatz – Andockmanöver</h2>
-            <p id="howto">WASD/←↑→↓ bewegen, <b>Shift</b> Boost, <b>E</b> Dock-Versuch.</p>
+            <p id="howto">WASD/←↑→↓ bewegen, <b>Shift</b> Boost (Klick), <b>E</b> Dock-Versuch. PS5: Stick/Square/X.</p>
             <button id="btnStart">Start</button>
           </div>
         </div>
 
-        <div id="end">
+        <div id="end" style="display:none">
           <div class="panel">
             <h2 id="endTitle">Ende</h2>
             <p id="endMsg"></p>
-            <button id="btnRetry">Nochmal</button>
+            <button id="btnRetry">Gleich Nochmal, Herr Menschberg?</button>
           </div>
         </div>
 
@@ -133,58 +131,14 @@
     </div>
   </div>
 
-  <!-- (Optional) Add-to-Home-Screen Banner -->
-  <div id="a2hs">
+  <!-- A2HS -->
+  <div id="a2hs" class="hide">
     <div class="wrap">
-      <div class="txt">
-        <b>Tipp:</b> Als App speichern für Vollbild ohne Browserleisten.
-        <span id="a2hsHint"></span>
-      </div>
+      <div class="txt"><b>Tipp:</b> Als App speichern für Vollbild ohne Browserleisten. <span id="a2hsHint"></span></div>
       <button id="a2hsBtn" style="display:none">Installieren</button>
       <button id="a2hsClose">Schließen</button>
     </div>
   </div>
-
-  <!-- A2HS-Logik (Android-Button / iOS-Hinweis) -->
-  <script>
-    (function(){
-      const a2hs = document.getElementById('a2hs');
-      const a2hsBtn = document.getElementById('a2hsBtn');
-      const a2hsClose = document.getElementById('a2hsClose');
-      const hint = document.getElementById('a2hsHint');
-
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-
-      let deferredPrompt = null;
-      window.addEventListener('beforeinstallprompt', (e)=>{
-        deferredPrompt = e; e.preventDefault();
-        if (!isStandalone) {
-          a2hs.style.display = 'block';
-          a2hsBtn.style.display = 'inline-block';
-          hint.textContent = ' (Android)';
-        }
-      });
-
-      function showIOSHint(){
-        if (isIOS && !isStandalone){
-          a2hs.style.display = 'block';
-          a2hsBtn.style.display = 'none';
-          hint.textContent = ' (iOS: Teile-Menü → „Zum Home-Bildschirm“) ';
-        }
-      }
-      window.addEventListener('load', ()=>{ setTimeout(()=>{ if(!deferredPrompt) showIOSHint(); }, 1200); });
-
-      a2hsBtn.addEventListener('click', async ()=>{
-        if(!deferredPrompt) return;
-        deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
-        deferredPrompt = null;
-        a2hs.style.display = 'none';
-      });
-      a2hsClose.addEventListener('click', ()=> a2hs.style.display='none' );
-    })();
-  </script>
 
   <script type="module" src="src/game.js"></script>
 </body>

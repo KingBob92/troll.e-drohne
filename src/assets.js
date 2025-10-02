@@ -16,10 +16,11 @@ export const ui = {
   controlsBar: $('#controlsBar'),
   stage: $('#stage'), stageWrap: $('#stageWrap'),
   rotate: $('#rotate'),
+  loading: $('#loading'), loadBar: $('#bar')?.firstElementChild, loadMsg: $('#loadMsg'),
+  a2hs: $('#a2hs'),
 };
 
 function viewportSize(){
-  // visualViewport ist auf iOS/Android präziser (inkl. UI-Balken)
   const vv = window.visualViewport;
   const vw = Math.floor((vv?.width ?? window.innerWidth));
   const vh = Math.floor((vv?.height ?? window.innerHeight));
@@ -28,7 +29,7 @@ function viewportSize(){
 
 export function fit(){
   const {vw, vh} = viewportSize();
-  const rat = 1536/1024; // VIEW_W/VIEW_H
+  const rat = 1536/1024;
   let w = vw, h = Math.round(w/rat);
   if (h > vh){ h = vh; w = Math.round(h*rat); }
   ui.stage.style.width  = w+'px';
@@ -37,7 +38,7 @@ export function fit(){
 addEventListener('resize', fit);
 if (window.visualViewport){
   visualViewport.addEventListener('resize', fit);
-  visualViewport.addEventListener('scroll', fit); // iOS adressleisten-„scroll“
+  visualViewport.addEventListener('scroll', fit);
 }
 fit();
 
@@ -103,3 +104,30 @@ export const SPRITES = {
   stone:    [ img('Assets/PROPS/Stone_1.png'),    img('Assets/PROPS/Stone_2.png'),    img('Assets/PROPS/Stone_3.png') ],
   trash:    [ img('Assets/PROPS/Trash_1.png'),    img('Assets/PROPS/Trash_2.png'),    img('Assets/PROPS/Trash_3.png'), img('Assets/PROPS/Trash_4.png'), img('Assets/PROPS/Trash_5.png') ],
 };
+
+// Komet
+export const cometSprite = img('Assets/PROPS/Comet_1.png');
+
+// -------- Image-Preload für Loading-Screen --------
+const IMG_URLS = [
+  // Backdrops + Overlay
+  'Assets/BACK/BACK_ebene_6.png','Assets/BACK/BACK_ebene_5.png','Assets/BACK/BACK_ebene_4.png',
+  'Assets/BACK/BACK_ebene_3.png','Assets/BACK/BACK_ebene_2.png','Assets/BACK/BACK_ebene_1.png',
+  'Assets/MAIN_OVERLAY.png',
+  // Drone
+  'Assets/DROHNE/DROHNE_off.png','Assets/DROHNE/DROHNE_on.png','Assets/DROHNE/DROHNE_boost.png',
+  // Props
+  'Assets/PROPS/Asteroid_1.png','Assets/PROPS/Asteroid_2.png','Assets/PROPS/Asteroid_3.png',
+  'Assets/PROPS/Stone_1.png','Assets/PROPS/Stone_2.png','Assets/PROPS/Stone_3.png',
+  'Assets/PROPS/Trash_1.png','Assets/PROPS/Trash_2.png','Assets/PROPS/Trash_3.png','Assets/PROPS/Trash_4.png','Assets/PROPS/Trash_5.png',
+  // Comet
+  'Assets/PROPS/Comet_1.png'
+];
+
+export async function preloadImages(progressCb){
+  let done=0,total=IMG_URLS.length;
+  const tick=()=>progressCb && progressCb(++done,total);
+  await Promise.all(IMG_URLS.map(url=>new Promise(res=>{
+    const i=new Image(); i.onload=()=>{tick();res();}; i.onerror=()=>{tick();res();}; i.src=url;
+  })));
+}

@@ -1,64 +1,73 @@
 // audio.js
-// Robuster Audio-Manager: nutzt deine echten Pfade unter Assets/SOUND/...
-// - Spielt erst nach Nutzer-Geste (unlock())
-// - Führt beim Unlock ein kurzes, stummes Warmup aller Audio-Elemente aus (für iOS/Safari/Android)
+export const audioReport = {
+  ok: new Set(),
+  fail: new Map(), // key -> url
+};
+
+function attachAudioDebug(a, key, url){
+  a.addEventListener('canplaythrough', ()=>{ audioReport.ok.add(key); }, { once:true });
+  a.addEventListener('error', ()=>{ audioReport.fail.set(key, url); console.error('[AUDIO FAIL]', key, url); }, { once:true });
+}
 
 export class SFXPool {
   constructor(map, poolSize = 3) {
     this.pools = new Map();
     this.unlocked = false;
+    this.urlMap = map;
     for (const [key, url] of Object.entries(map)) {
       const arr = [];
       for (let i = 0; i < poolSize; i++) {
         const a = new Audio(url);
         a.preload = 'auto';
         a.crossOrigin = 'anonymous';
+        attachAudioDebug(a, key, url);
         a.load();
         arr.push(a);
       }
       this.pools.set(key, { arr, idx: 0 });
     }
   }
+  elements(){ const out=[]; for (const {arr} of this.pools.values()) out.push(...arr); return out; }
+
   async unlock() {
     if (this.unlocked) return;
-    this.unlocked = true;
-    // Warmup: jedes Element einmal stumm anspielen, dann stoppen
-    for (const { arr } of this.pools.values()) {
-      for (const a of arr) {
-        try {
-          a.muted = true;
-          await a.play().catch(() => {});
-          a.pause();
-          a.currentTime = 0;
-        } catch {}
-        a.muted = false;
-      }
+    // erst am Ende auf true setzen, damit während des Unlocks nichts „stumm“ abgespielt wird
+    const nodes = this.elements();
+    for (const a of nodes) {
+      try {
+        a.muted = true;
+        await a.play().catch(()=>{});
+        a.pause(); a.currentTime = 0;
+      } catch {}
+      a.muted = false;
     }
+    this.unlocked = true;
   }
+
   play(key, { volume = 1.0, loop = false, rate = 1.0 } = {}) {
-    if (!this.unlocked) return null;
+    if (!this.unlocked) { console.warn('[SFX] play before unlock', key); return null; }
     const p = this.pools.get(key);
-    if (!p) return null;
+    if (!p) { console.warn('[SFX missing key]', key); return null; }
     const a = p.arr[(p.idx = (p.idx + 1) % p.arr.length)];
     try { a.pause(); a.currentTime = 0; } catch {}
     a.loop = loop;
     a.playbackRate = rate;
     a.volume = volume;
-    a.play().catch(() => {});
+    a.play().catch((e) => { console.warn('[SFX play error]', key, e); });
     return a;
-  }
-  stop(node) {
-    try { node.pause(); node.currentTime = 0; } catch {}
   }
 }
 
 export class VoiceMgr {
   constructor(voiceMap) {
     this.clips = new Map();
+    this.urlMap = voiceMap;
     for (const [k, url] of Object.entries(voiceMap)) {
       const a = new Audio(url);
       a.preload = 'auto';
       a.volume = 0.95;
+      attachAudioDebug(a, k, url);
+      a.load();
       this.clips.set(k, a);
     }
     this.cur = null;
@@ -68,35 +77,33 @@ export class VoiceMgr {
     this.endPlayed = false;
     this.end10Played = false;
   }
+  elements(){ return [...this.clips.values()]; }
+
   async unlock() {
     if (this.unlocked) return;
-    this.unlocked = true;
-    // Warmup: alle Voices stumm anspielen
-    for (const a of this.clips.values()) {
+    const nodes = this.elements();
+    for (const a of nodes) {
       try {
         a.muted = true;
-        await a.play().catch(() => {});
-        a.pause();
-        a.currentTime = 0;
+        await a.play().catch(()=>{});
+        a.pause(); a.currentTime = 0;
       } catch {}
       a.muted = false;
     }
+    this.unlocked = true;
   }
+
   stop() {
     try {
-      if (this.cur) {
-        this.cur.onended = null;
-        this.cur.pause();
-        this.cur.currentTime = 0;
-      }
+      if (this.cur) { this.cur.onended = null; this.cur.pause(); this.cur.currentTime = 0; }
     } catch {}
-    this.cur = null;
-    this.pri = 0;
+    this.cur = null; this.pri = 0;
   }
+
   playKey(key, pri, { scheduleNextDialog = true } = {}) {
-    if (!this.unlocked) return;
+    if (!this.unlocked) { console.warn('[VOICE] play before unlock', key); return; }
     const base = this.clips.get(key);
-    if (!base) return;
+    if (!base) { console.warn('[VOICE missing key]', key); return; }
     if (this.cur && pri < this.pri) return;
     if (this.cur) this.stop();
     this.pri = pri;
@@ -104,15 +111,15 @@ export class VoiceMgr {
     a.volume = base.volume ?? 0.95;
     this.cur = a;
     a.onended = () => {
-      this.cur = null;
-      this.pri = 0;
+      this.cur = null; this.pri = 0;
       if (!this.endPlayed && scheduleNextDialog) {
         clearTimeout(this.dialogTimer);
         this.dialogTimer = setTimeout(() => this.playRandomDialog(), 3000);
       }
     };
-    a.play().catch(() => {});
+    a.play().catch((e)=>{ console.warn('[VOICE play error]', key, e); });
   }
+
   playRandomDialog() {
     if (!this.unlocked || this.endPlayed) return;
     const n = 1 + Math.floor(Math.random() * 8);
@@ -120,7 +127,6 @@ export class VoiceMgr {
   }
 }
 
-// === Fabriken mit DEINEN echten Pfaden ===
 export const sfx = new SFXPool({
   start:  'Assets/SOUND/SFX/DROHNE_start.mp3',
   hit1:   'Assets/SOUND/SFX/DROHNE_demage_1.mp3',
@@ -132,12 +138,12 @@ export const sfx = new SFXPool({
   dockok: 'Assets/SOUND/SFX/DOCKING_correct.mp3'
 }, 4);
 
-// Musik (dein Pfad)
 export const music = new Audio('Assets/SOUND/Music.mp3');
 music.loop = true;
 music.volume = 0.25;
 music.preload = 'auto';
 music.crossOrigin = 'anonymous';
+attachAudioDebug(music, 'music', 'Assets/SOUND/Music.mp3');
 
 export const VOICE_PRI = { dialog:1, start:2, demage:3, end10:4, end:5 };
 export const voice = new VoiceMgr({
@@ -156,3 +162,25 @@ export const voice = new VoiceMgr({
   dialog7: 'Assets/SOUND/VOICES/VOICE_dialog_7.mp3',
   dialog8: 'Assets/SOUND/VOICES/VOICE_dialog_8.mp3',
 });
+
+// Preload-Helfer
+function once(el, ev, timeout=10000){ return new Promise(res=>{
+  let done=false; const t=setTimeout(()=>{ if(!done){done=true;res();} }, timeout);
+  el.addEventListener(ev, ()=>{ if(!done){done=true;clearTimeout(t);res();} }, { once:true });
+});}
+export async function preloadAllAudio(progressCb){
+  const nodes = [...sfx.elements(), ...voice.elements(), music];
+  let done=0, total=nodes.length;
+  const tick=()=>progressCb && progressCb(++done,total);
+  await Promise.all(nodes.map(async a=>{
+    try{
+      a.load();
+      if (a.readyState>=3){ tick(); return; }
+      await once(a,'canplaythrough',12000); tick();
+    }catch{ tick(); }
+  }));
+  window.__audioReport = {
+    ok: Array.from(audioReport.ok.values()),
+    fail: Array.from(audioReport.fail.entries()),
+  };
+}
