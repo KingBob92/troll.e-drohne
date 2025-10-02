@@ -3,7 +3,7 @@ import { VIEW_W, VIEW_H, WORLD_W, BG_W, CFG, MARGIN_X, MARGIN_TOP, MARGIN_BOTTOM
          THRUST, MAX_SPD, DRAG, GREMLIN_BASE, OBJ_DRAG, WALL_BOUNCE, RESTITUTION, DEBUG,
          OBSTACLE_DENSITY, HUD, COMET } from './const.js';
 import { $, cvs, ctx, ui, isTouch, fit, chooseControlLayout, cometSprite, preloadImages } from './assets.js';
-import { sfx, music, VOICE_PRI, voice, preloadAllAudio } from './audio.js';
+import { sfx, music, VOICE_PRI, voice, preloadSFX, preloadVoicesAndMusic, audioCtx } from './audio.js';
 import { keys, keyJust, mobile, initTouch, vibrate, gamepad, startGamepadListeners, pollInputs } from './input.js';
 import { hookPointer, drawParallax, drawOverlay } from './render.js';
 import { SPRITES, dr } from './assets.js';
@@ -46,7 +46,7 @@ function applyDamage(amount){
   if(health<=0){
     gameRunning=false;
     stopDock();
-    voice.endPlayed=true; voice.stop();
+    voice.endPlayed=true; // Voice stop lassen; Endscreen sagt genug
     ui.goal.textContent='Drohne zerstört – Abbruch';
     showEnd(false,'Drohne zerstört','Die Drohne hat zu viel Schaden erlitten.');
   }
@@ -119,7 +119,7 @@ function tryDock(){
   dockNode = sfx.play('count');
 }
 function stopDock(){
-  if(dockNode){ try{dockNode.pause(); dockNode.currentTime=0;}catch(_){ } dockNode=null; }
+  if(dockNode && dockNode.stop){ try{dockNode.stop();}catch(_){ } dockNode=null; }
 }
 function updDock(dt){
   inAnchor = ((drone.x-anchor.x)**2 + (drone.y-anchor.y)**2) <= (drone.r+anchor.rI)*(drone.r+anchor.rI);
@@ -300,7 +300,7 @@ function cometCollisions(){
     if (d2 >= rSum*rSum) continue;
     const d = Math.sqrt(d2)||1, nx = dx/d, ny = dy/d;
     const overlap = (rSum - d);
-    o.x += nx * overlap * 1.05; o.y += ny * overlap * 1.05;
+    o.x += nx * overlap * 1.05; o.y += ny * 1.05;
     const push = Math.abs(comet.vx) * COMET.PUSH_FORCE;
     o.vx = o.vx * 0.5 + (-Math.abs(push) * (0.6 + 0.4*Math.random())) * 1.0;
     o.vy = o.vy * 0.5 + (ny * push * 0.3);
@@ -355,7 +355,7 @@ function handleDroneCollisions(){
     const d=Math.sqrt(d2)||1, ux=dx/d, uy=dy/d;
     const rel=(drone.vx-o.vx)*ux+(drone.vy-o.vy)*uy;
     const mD=1.0, mO=o.mass??(o.big?2.0:1.0), rest=0.7;
-    const j=-(1+RESTITUTION)*rel/(1/mD+1/mO);
+    const j=-(1+rest)*rel/(1/mD+1/mO);
     let df=1.0, of=1.0; if(o.type==='trash'){ df=0.25; of=1.2; }
     drone.vx += (j*ux/mD)*df; drone.vy += (j*uy/mD)*df;
     o.vx     -= (j*ux/mO)*of; o.vy     -= (j*uy/mO)*of;
@@ -369,13 +369,13 @@ function handleDroneCollisions(){
   }
 }
 
-// —— Drohne + Inputs (Edge-Trigger-Boost) ——
+// —— Drohne + Inputs (mit mobilem Boost-Plus) ——
 function drawDrone(dt){
-  pollInputs(); // Gamepad/Tastatur aktualisieren
+  pollInputs();
+
   updGremlin(dt);
   if (wallHitCD>0) wallHitCD -= dt;
 
-  // Priorität: Gamepad > Touch > Keyboard
   let ix=0, iy=0;
   if (gamepad.connected){ ix = gamepad.ix; iy = gamepad.iy; }
   else if (isTouch){ ix = mobile.ix; iy = mobile.iy; }
@@ -394,7 +394,8 @@ function drawDrone(dt){
   mobile.boostPressed = false; keyJust.boost = false;
 
   if(drone.boostLeft>0){
-    accel*=CFG.BOOST_FACTOR; maxSpd*=CFG.BOOST_FACTOR;
+    const boostMul = isTouch ? 1.15 : 1.0; // Mobil minimal kräftiger
+    accel*=CFG.BOOST_FACTOR*boostMul; maxSpd*=CFG.BOOST_FACTOR*boostMul;
     drone.boostLeft-=dt;
     if(drone.boostLeft<=0){ drone.boostLeft=0; drone.boostCD=CFG.BOOST_COOLDOWN; }
   } else if(drone.boostCD>0){ drone.boostCD-=dt; }
@@ -426,7 +427,6 @@ function drawDrone(dt){
 
   if (gamepad.justDock) tryDock();
 
-  // Draw
   const sx = drone.x - camera.x;
   const sy = drone.y - camera.y;
   const spr = (drone.boostLeft>0 && dr.boost.complete && dr.boost.naturalWidth) ? dr.boost :
@@ -477,7 +477,7 @@ function drawFrame(dt){
     if(timeLeft<=0){
       timeLeft=0; gameRunning=false; say('Rüdiger','System hat abgebrochen… Mist.');
       ui.goal.textContent='Sicherheitsprotokoll aktiviert – Abbruch';
-      stopDock(); voice.endPlayed=true; voice.stop();
+      stopDock(); voice.endPlayed=true;
       showEnd(false,'Zeit abgelaufen','Die Drohne hat es nicht rechtzeitig geschafft.');
     } else if(Math.ceil(timeLeft)===CFG.LOW_WARN){
       ui.time.style.color='#ff5c5c';
@@ -494,6 +494,7 @@ function showEnd(ok,title,msg){
 }
 
 // —— Loading / Start ——
+// Fortschritt: Wir zeigen *Images + SFX* (kritisch), Voices/Music später
 function setLoadProgress(done,total){
   const p = total? Math.round(done*100/total):100;
   if (ui.loadBar) ui.loadBar.style.width = p+'%';
@@ -503,30 +504,32 @@ function hide(el){ if(!el) return; el.style.display='none'; el.classList.add('hi
 function showFlex(el){ if(!el) return; el.classList.remove('hide'); el.style.display='flex'; }
 function showStartPanel(){ hide(ui.loading); showFlex(ui.start); }
 
-async function preloadAll(){
-  try{
-    let imgsTotal=0;
-    await preloadImages((d,t)=>{ imgsTotal=t; setLoadProgress(d,t); });
-    await preloadAllAudio((d,t)=>{ setLoadProgress(imgsTotal + d, imgsTotal + t); });
-  } catch(err){ console.error('[preloadAll] Fehler:', err); }
-  finally { showStartPanel(); }
+async function preloadCritical(){
+  // 1) Bilder
+  let imgTotal=0;
+  await preloadImages((d,t)=>{ imgTotal=t; setLoadProgress(d,t); });
+  // 2) SFX (WebAudio) – zählt hinter die Bilder
+  await preloadSFX((d,t)=>{ setLoadProgress(imgTotal + d, imgTotal + t); });
 }
 
-// ⚠️ WICHTIG: Unlock ABWARTEN, dann Start-SFX, erst DANACH Voice & Musik
+async function preloadBackground(){
+  // Voices & Music nach Start (kein UI-Block)
+  await preloadVoicesAndMusic();
+}
+
 async function startGame(){
   try{
-    // 1) Explizit auf Unlock warten (verhindert, dass irgendein Audio-Element noch gemutet ist)
-    console.log('[start] unlocking audio…');
+    // Audio-Contexts freigeben
+    if (audioCtx && audioCtx.state !== 'running'){
+      try { await audioCtx.resume(); } catch {}
+    }
     await sfx.unlock();
     await voice.unlock();
-    console.log('[start] audio unlocked.');
 
-    // 2) Start-SFX
+    // Start-SFX (WebAudio -> extrem niedrige Latenz)
     const node = sfx.play('start', { volume: 1.0 });
-    console.log('[start] SFX start played ->', !!node);
 
     const startVoiceAndMusic = () => {
-      console.log('[start] starting voice + music');
       voice.playKey('start', VOICE_PRI.start);
       music.currentTime = 0;
       music.volume = 0.0;
@@ -534,37 +537,33 @@ async function startGame(){
       const t0 = performance.now();
       const fade = ()=> {
         const dt = (performance.now() - t0) / 1000;
-        music.volume = Math.min(0.9, dt * 0.9); // ~1s Fade-in
+        music.volume = Math.min(0.9, dt * 0.9);
         if (music.volume < 0.9) requestAnimationFrame(fade);
       };
       requestAnimationFrame(fade);
     };
 
-    // 3) Entweder warten wir aufs Ende des SFX…
-    let ended = false;
-    if (node) {
-      node.onended = () => {
-        if (ended) return;
-        ended = true;
-        startVoiceAndMusic();
-      };
-    }
-    // …oder Fallback nach 1200ms (falls onended nicht feuert)
-    setTimeout(()=>{ if (!ended) { ended = true; startVoiceAndMusic(); } }, 1200);
+    let done=false;
+    if (node) node.onended = ()=>{ if(!done){done=true; startVoiceAndMusic();} };
+    setTimeout(()=>{ if(!done){done=true; startVoiceAndMusic();} }, 1200);
 
-    // 4) Spielzustand
+    // Spiel los
     gameRunning=true; timeLeft=CFG.TIME_LIMIT; firstCollision=false; health=100; updateHP();
     hide(ui.start);
-    if (isTouch && ui.howto) ui.howto.innerHTML = 'Links Analog-Stick, Boost mit Tippen (Square), Andocken (X/E).';
+    if (isTouch && ui.howto) ui.howto.innerHTML = 'Links Analog-Stick, Boost tippen (Square), Andocken (X/E).';
 
     clearTimeout(voice.dialogTimer);
     voice.dialogTimer = setTimeout(()=>voice.playRandomDialog(), 4000);
+
+    // Stimmen & Musik-Decode jetzt im Hintergrund anschieben
+    setTimeout(()=>{ preloadBackground(); }, 300);
 
   } catch(err){
     console.error('[startGame] Fehler:', err);
   }
 }
 
+// Buttons
 ui.btnStart?.addEventListener('click', ()=> startGame());
 $('#btnRetry')?.addEventListener('click', ()=> location.reload());
 addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='e') tryDock(); });
@@ -578,18 +577,31 @@ spawnObs();
 updateHP();
 ui.time.textContent = fmt(timeLeft);
 safetyInit();
-preloadAll();
-setTimeout(()=>{ if (ui.loading && ui.loading.style.display!=='none') showStartPanel(); }, 1500);
 
+// Preload (kritisch) und dann Startpanel
+preloadCritical().then(showStartPanel);
+// Fallback, falls irgendwas hängt
+setTimeout(()=>{ if (ui.loading && ui.loading.style.display!=='none') showStartPanel(); }, 1800);
+
+// Debug
 if (DEBUG) {
-  window.__gameDebug = () => ({
-    timeLeft, health,
-    debugAudio: {
-      musicVol: music.volume,
-      voiceUnlocked: voice.unlocked,
-      sfxUnlocked: sfx.unlocked,
-    }
-  });
+  window.__gameDebug = () => {
+    const spd = Math.hypot(drone.vx, drone.vy);
+    return {
+      timeLeft,
+      health,
+      obstacles: obstacles.length,
+      drone: { x: drone.x, y: drone.y, vx: drone.vx, vy: drone.vy, spd },
+      camera: { x: camera.x },
+      gremlin: { curX: GREMLIN.curX, curY: GREMLIN.curY },
+      anchor: { inAnchor, active: anchor.active, holdLeft: anchor.holdLeft, wx: anchor.x, wy: anchor.y },
+      comet: comet ? { x: comet.x, y: comet.y, vx: comet.vx } : null,
+      audio: {
+        webaudio: !!audioCtx, ctxState: audioCtx?.state,
+        sfxUnlocked: sfx.unlocked, voiceUnlocked: voice.unlocked,
+      }
+    };
+  };
 }
 
 requestAnimationFrame(loop);

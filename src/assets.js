@@ -3,7 +3,8 @@ import { VIEW_W } from './const.js';
 export const $ = sel => document.querySelector(sel);
 
 export const cvs = $('#game');
-export const ctx = cvs.getContext('2d');
+export const ctx = cvs.getContext('2d', { alpha: true });
+
 export const ui = {
   time: $('#time'), goal: $('#goal'), sub: $('#subtitle'),
   hpText: $('#hpText'), hpBar: $('#hpBar'),
@@ -27,6 +28,24 @@ function viewportSize(){
   return {vw, vh};
 }
 
+let __dpi = 1;
+function applyCanvasScale(){
+  // Cap DPR für Performance: Desktop bis 2.0, Touch bis 1.5
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0 || navigator.msMaxTouchPoints>0;
+  const target = Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2.0);
+  if (Math.abs(target - __dpi) > 0.01){
+    __dpi = target;
+    // Backing store auf VIEW-Größe * DPI, transform für logische Koordinaten
+    const w = cvs.getAttribute('width')|0;   // 1536
+    const h = cvs.getAttribute('height')|0;  // 1024
+    cvs.width  = Math.round(w * __dpi);
+    cvs.height = Math.round(h * __dpi);
+    ctx.setTransform(__dpi, 0, 0, __dpi, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+  }
+}
+export const DPR = () => __dpi;
+
 export function fit(){
   const {vw, vh} = viewportSize();
   const rat = 1536/1024;
@@ -34,6 +53,7 @@ export function fit(){
   if (h > vh){ h = vh; w = Math.round(h*rat); }
   ui.stage.style.width  = w+'px';
   ui.stage.style.height = h+'px';
+  applyCanvasScale();
 }
 addEventListener('resize', fit);
 if (window.visualViewport){
@@ -110,17 +130,13 @@ export const cometSprite = img('Assets/PROPS/Comet_1.png');
 
 // -------- Image-Preload für Loading-Screen --------
 const IMG_URLS = [
-  // Backdrops + Overlay
   'Assets/BACK/BACK_ebene_6.png','Assets/BACK/BACK_ebene_5.png','Assets/BACK/BACK_ebene_4.png',
   'Assets/BACK/BACK_ebene_3.png','Assets/BACK/BACK_ebene_2.png','Assets/BACK/BACK_ebene_1.png',
   'Assets/MAIN_OVERLAY.png',
-  // Drone
   'Assets/DROHNE/DROHNE_off.png','Assets/DROHNE/DROHNE_on.png','Assets/DROHNE/DROHNE_boost.png',
-  // Props
   'Assets/PROPS/Asteroid_1.png','Assets/PROPS/Asteroid_2.png','Assets/PROPS/Asteroid_3.png',
   'Assets/PROPS/Stone_1.png','Assets/PROPS/Stone_2.png','Assets/PROPS/Stone_3.png',
   'Assets/PROPS/Trash_1.png','Assets/PROPS/Trash_2.png','Assets/PROPS/Trash_3.png','Assets/PROPS/Trash_4.png','Assets/PROPS/Trash_5.png',
-  // Comet
   'Assets/PROPS/Comet_1.png'
 ];
 
